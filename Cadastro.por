@@ -4,7 +4,7 @@ programa
 
 	// Programa para cadastrar alunos, notas e gerar relatório contendo média e aprovação
 	// Criado por Roberson Marques
-	// Data:
+	// Data: 27/11/2023
 	
 	// Declaração de variáveis globais
 	
