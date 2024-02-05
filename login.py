@@ -1,9 +1,14 @@
+import tkinter as tk
 import customtkinter as ctk
 import mysql.connector as mc
 import re
 import requests
 import pandas as pd
-from tkinter import messagebox, Toplevel
+import json
+import time
+import win32com.client as win32
+from CTkToolTip import *
+from tkinter import messagebox, Toplevel, Scrollbar, Text, VERTICAL, Y
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
@@ -11,17 +16,14 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph
 
 def validacao_cpf(cpf):
     cpf = re.sub('[^0-9]', '', cpf)
-    
     if len(cpf) != 11:
         return False
     total = 0
-    
     for i in range(9):
         total += int(cpf[i]) * (10 - i)
     remainder = total % 11
     digit1 = 0 if remainder < 2 else 11 - remainder
     total = 0
-    
     for i in range(10):
         total += int(cpf[i]) * (11 - i)
     remainder = total % 11
@@ -38,28 +40,39 @@ class TelaLogin():
         self.janela.geometry("400x350")
         self.janela.resizable(False, False)
         self.janela.iconbitmap("usuario.ico")
-        self.janela.bind('<Return>', lambda event = None: self.login())
 
         self.frame_login = ctk.CTkFrame(janela)
 
-        self.cabecalho= ctk.CTkLabel(self.janela, text = "FAÇA SEU LOGIN", font = ("verdana", 20), text_color = "blue")
-        self.cabecalho.place(x = 110, y = 10)
+        self.cabecalho= ctk.CTkLabel(self.janela, text = "FAÇA SEU LOGIN", font = ("verdana", 20), text_color = "blue").place(x = 110, y = 10)
         self.usuario = ctk.CTkEntry(self.janela, placeholder_text = "Digite seu username", font = ("verdana", 14), justify = "center", width = 300)
         self.usuario.place(x = 50, y = 70)
-        self.texto1 = ctk.CTkLabel(self.janela, text = "*campo obrigatório", font = ("verdana", 10), text_color = "green")
-        self.texto1.place(x = 50, y = 100)
+        self.texto1 = ctk.CTkLabel(self.janela, text = "*campo obrigatório", font = ("verdana", 10), text_color = "green").place(x = 50, y = 100)
         self.senha = ctk.CTkEntry(self.janela, placeholder_text = "Digite sua senha", font = ("verdana", 14), justify = "center", width = 300, show = "*")
         self.senha.place(x = 50, y = 130)
-        self.texto2 = ctk.CTkLabel(self.janela, text = "*campo obrigatório", font = ("verdana", 10), text_color = "green")
-        self.texto2.place(x = 50, y = 160)
-        self.checkbox = ctk.CTkCheckBox(self.janela, text = "Lembrar", font = ("verdana", 14))
+        self.texto2 = ctk.CTkLabel(self.janela, text = "*campo obrigatório", font = ("verdana", 10), text_color = "green").place(x = 50, y = 160)
+        self.check_box = ctk.IntVar()
+        self.checkbox = ctk.CTkCheckBox(self.janela, text = "Lembrar", font = ("verdana", 14), variable = self.check_box)
         self.checkbox.place(x = 50, y = 200)
-        self.botao_login = ctk.CTkButton(self.janela, text = "Login", font = ("verdana", 16), width = 200, command = self.login)
-        self.botao_login.place(x = 100, y = 250)
-        self.texto3 = ctk.CTkLabel(self.janela, text = "Não tem cadastro?", font = ("verdana", 14))
-        self.texto3.place(x = 80, y = 310)
-        self.botao_cadastro = ctk.CTkButton(self.janela, text = "Clique aqui", font = ("verdana", 14), fg_color = "transparent", hover_color = "green", width = 30, command = self.cad_usuario)
-        self.botao_cadastro.place(x = 220, y = 310)
+        self.botao_login = ctk.CTkButton(self.janela, text = "Login", font = ("verdana", 16), width = 200, command = self.login).place(x = 100, y = 250)
+        self.texto3 = ctk.CTkLabel(self.janela, text = "Não tem cadastro?", font = ("verdana", 14)).place(x = 80, y = 310)
+        self.botao_cadastro = ctk.CTkButton(self.janela, text = "Clique aqui", font = ("verdana", 14), fg_color = "transparent", hover_color = "green", width = 30, command = self.cad_usuario).place(x = 220, y = 310)
+        self.janela.bind('<Return>', lambda event = None: self.login())
+        self.carregar_usuario()
+
+    def carregar_usuario(self):
+        try:
+            with open("saved_user.json", "r") as file:
+                saved_user_data = json.load(file)
+                self.usuario.insert(0, saved_user_data.get("username", ""))
+                self.senha.insert(0, saved_user_data.get("password", ""))
+                self.check_box.set(saved_user_data.get("remember", 0))
+        except FileNotFoundError:
+            pass
+
+    def save_user_data(self):
+        info_usuario = {"username": self.usuario.get(), "password": self.senha.get(), "remember": self.check_box.get()}
+        with open("saved_user.json", "w") as file:
+            json.dump(info_usuario, file)
 
     def login(self):
         usuario = self.usuario.get()
@@ -75,7 +88,9 @@ class TelaLogin():
         
         if bd:
             messagebox.showinfo(title = "Login de usuário", message = "Login efetuado com sucesso!")
-            TelaOpcao(self.janela)
+            if self.check_box.get():
+                self.save_user_data()
+            self.tela_opcao()
         else:
             messagebox.showerror(title = "Login de usuário", message = "Usuário e ou senha não encontrados!")
             self.usuario.delete(0, 'end')
@@ -98,18 +113,12 @@ class TelaOpcao():
 
         self.frame_opcao = ctk.CTkFrame(self.janela)
 
-        self.cabecalho = ctk.CTkLabel(self.janela, text = "ESCOLHA UMA OPÇÃO", font = ("verdana", 20), text_color = "blue")
-        self.cabecalho.place(x = 60, y = 10)
-        self.botao_cadastro = ctk.CTkButton(self.janela, text = "Cadastrar Aluno", font = ("verdana", 16), fg_color = "green", width = 200, command = self.cad_aluno)
-        self.botao_cadastro.place(x = 75, y = 70)
-        self.botao_cad_notas = ctk.CTkButton(self.janela, text = "Cadastrar Notas", font = ("verdana", 16), fg_color = "green", width = 200, command = self.cad_notas)
-        self.botao_cad_notas.place(x = 75, y = 120)
-        self.botao_gera_relat = ctk.CTkButton(self.janela, text = "Gerar Relatório", font = ('verdana', 16), fg_color = "green", width = 200, command = self.gera_rel)
-        self.botao_gera_relat.place(x = 75, y = 170)
-        self.botao_excluir = ctk.CTkButton(self.janela, text = "Excluir Aluno", font = ('verdana', 16), fg_color = "green", width = 200, command = self.exc_aluno)
-        self.botao_excluir.place(x = 75, y = 220)
-        self.botao_encerrar = ctk.CTkButton(self.janela, text = "Encerrar Sistema", font = ("verdana", 14), width = 150, command = self.encerrar_sistema)
-        self.botao_encerrar.place(x = 100, y = 280)
+        self.cabecalho = ctk.CTkLabel(self.janela, text = "ESCOLHA UMA OPÇÃO", font = ("verdana", 20), text_color = "blue").place(x = 60, y = 10)
+        self.botao_cadastro = ctk.CTkButton(self.janela, text = "Cadastrar Aluno", font = ("verdana", 16), fg_color = "green", width = 200, command = self.cad_aluno).place(x = 75, y = 70)
+        self.botao_cad_notas = ctk.CTkButton(self.janela, text = "Cadastrar Notas", font = ("verdana", 16), fg_color = "green", width = 200, command = self.cad_notas).place(x = 75, y = 120)
+        self.botao_gera_relat = ctk.CTkButton(self.janela, text = "Gerar Relatório", font = ('verdana', 16), fg_color = "green", width = 200, command = self.gera_rel).place(x = 75, y = 170)
+        self.botao_excluir = ctk.CTkButton(self.janela, text = "Excluir Aluno", font = ('verdana', 16), fg_color = "green", width = 200, command = self.exc_aluno).place(x = 75, y = 220)
+        self.botao_encerrar = ctk.CTkButton(self.janela, text = "Encerrar Sistema", font = ("verdana", 14), width = 150, command = self.encerrar_sistema).place(x = 100, y = 280)
 
     def encerrar_sistema(self):
         self.janela_principal.destroy()
@@ -136,10 +145,8 @@ class TelaCadastrarUsuario():
 
         self.frame_cadastrar_usuario = ctk.CTkFrame(self.janela)
 
-        self.cabecalho = ctk.CTkLabel(self.janela, text = "FAÇA SEU CADASTRO", font = ("verdana", 20), text_color = "blue")
-        self.cabecalho.place(x = 90, y = 10)
-        self.texto1 = ctk.CTkLabel(self.janela, text = "*Todos os campos são obrigatórios", font = ("verdana", 10),text_color = "green")
-        self.texto1.place(x = 50, y = 50)
+        self.cabecalho = ctk.CTkLabel(self.janela, text = "FAÇA SEU CADASTRO", font = ("verdana", 20), text_color = "blue").place(x = 90, y = 10)
+        self.texto1 = ctk.CTkLabel(self.janela, text = "*Todos os campos são obrigatórios", font = ("verdana", 10),text_color = "green").place(x = 50, y = 50)
         self.nome = ctk.CTkEntry(self.janela, placeholder_text = "Digite seu nome completo", font = ("verdana", 14), justify = "center", width = 300)
         self.nome.place(x = 50, y = 90)
         self.email = ctk.CTkEntry(self.janela, placeholder_text = "Digite seu email", font = ("verdana", 14), justify = "center", width = 300)
@@ -148,14 +155,59 @@ class TelaCadastrarUsuario():
         self.usuario.place(x = 50, y = 190)
         self.senha = ctk.CTkEntry(self.janela, placeholder_text = "Digite sua senha", font = ("verdana", 14), justify = "center", width = 300, show = "*")
         self.senha.place(x = 50, y =230)
+        self.texto_tooltip = "Máximo 10 caracteres, ao menos uma letra maiúscula e um número"
+        self.tooltip = CTkToolTip(self.senha, message = self.texto_tooltip)
         self.confirma = ctk.CTkEntry(self.janela, placeholder_text = "Confirme sua senha", font = ("verdana", 14), justify = "center", width = 300, show = "*")
         self.confirma.place(x = 50, y =270)
         self.checkbox = ctk.CTkCheckBox(self.janela, text = "Aceito os termos e políticas", font = ("verdana", 14))
         self.checkbox.place(x = 50, y = 320)
-        self.botao_cadastrar = ctk.CTkButton(self.janela, text = "Cadastrar", font = ("verdana", 16), width = 140, command = self.cadastro)
-        self.botao_cadastrar.place(x = 210, y = 370)
-        self.botao_voltar = ctk.CTkButton(self.janela, text = "Voltar", font = ("verdana", 16), fg_color = "green", width = 140, command = self.janela.destroy)
-        self.botao_voltar.place(x = 50, y = 370)
+        self.botao_cadastrar = ctk.CTkButton(self.janela, text = "Cadastrar", font = ("verdana", 16), width = 140, command = self.cadastro).place(x = 210, y = 370)
+        self.botao_voltar = ctk.CTkButton(self.janela, text = "Voltar", font = ("verdana", 16), fg_color = "green", width = 140, command = self.janela.destroy).place(x = 50, y = 370)
+        self.senha.bind("<FocusIn>", self.mostrar_tooltip)
+        self.senha.bind("<FocusOut>", self.ocultar_tooltip)
+        self.checkbox.bind("<Button-1>", self.status_checkbox)
+
+    def status_checkbox(self, event):
+        if self.checkbox.get() == 1:
+            self.mostrar_acordos()
+
+    def mostrar_acordos(self):
+        self.janela = ctk.CTkToplevel(self.janela)
+        self.janela.title("Termos e Políticas")
+        self.janela.geometry("350x350")
+        self.janela.resizable(False, False)
+        self.janela.grab_set()
+
+        try:
+            with open('termos_e_politicas.txt', 'r', encoding = 'utf-8') as file:
+                texto_acordos = file.read()
+        except FileNotFoundError:
+            texto_acordos = "Erro ao carregar os termos e políticas."
+        self.scrollbar = Scrollbar(self.janela, orient = VERTICAL)
+        self.scrollbar.pack(side = "right", fill = Y)
+        self.texto = Text(self.janela, wrap = "word", yscrollcommand = self.scrollbar.set, width = 50, height = 20)
+        self.texto.insert("1.0", texto_acordos)
+        self.texto.pack(padx = 10, pady = 10)
+        self.scrollbar.config(command = self.texto.yview)
+        self.aceitar = ctk.CTkButton(self.janela, text = "Aceitar", command = self.janela.destroy)
+        self.aceitar.pack(side = "left", padx = 10)
+        self.negar = ctk.CTkButton(self.janela, text = "Negar", command = self.fechar_acordos)
+        self.negar.pack(side = "right", padx = 10)
+
+    def fechar_acordos(self):
+        self.checkbox.deselect()
+        self.janela.destroy()
+        self.janela.grab_release()
+
+    def checar_senha(self, password):
+        if len(password) > 10:
+            return False
+        elif not any(char.isupper() for char in password):
+            return False
+        elif not any(char.isdigit() for char in password):
+            return False
+        else:
+            return True
 
     def cadastro(self):
         nome = self.nome.get()
@@ -164,6 +216,9 @@ class TelaCadastrarUsuario():
         senha = self.senha.get()
         confirma_senha = self.confirma.get()
         
+        if not self.checar_senha(senha):
+            messagebox.showerror(title = "Cadastro de usuário", message = "A senha não atende aos requisitos.")
+            return
         if not nome or not email or not usuario or not senha or not confirma_senha:
             messagebox.showerror(title = "Cadastro de usuário", message = "Por favor, preencha todos os campos.")
         elif senha != confirma_senha:
@@ -185,6 +240,35 @@ class TelaCadastrarUsuario():
             cursor.close()
             conexao.close()
 
+    def mostrar_tooltip(self, event):
+        self.tooltip.mostrar()
+
+    def ocultar_tooltip(self, event):
+        self.tooltip.esconder()
+
+class CTkToolTip:
+    def __init__(self, widget, message):
+        self.widget = widget
+        self.message = message
+        self.tooltip = None
+
+    def mostrar(self):
+        if self.tooltip is not None:
+            return
+        x, y, _, _ = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 30
+        self.tooltip = tk.Toplevel(self.widget)
+        self.tooltip.wm_overrideredirect(True)
+        self.tooltip.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(self.tooltip, text = self.message, font = ("Verdana", 14), background = "#ffffe0", justify = tk.LEFT, relief = tk.SOLID, borderwidth = 1)
+        label.pack(ipadx = 1)
+
+    def esconder(self):
+        if self.tooltip is not None:
+            self.tooltip.destroy()
+            self.tooltip = None
+
 class TelaCadastrarAluno():
     def __init__(self, janela):
         self.janela = ctk.CTkToplevel(janela)
@@ -195,18 +279,14 @@ class TelaCadastrarAluno():
 
         self.frame_cadastrar_aluno = ctk.CTkFrame(self.janela)
 
-        self.cabecalho = ctk.CTkLabel(self.janela, text = "CADASTRO DE ALUNOS", font = ("verdana", 28), text_color = "blue")
-        self.cabecalho.place(x = 200, y = 10)
-        self.texto1 = ctk.CTkLabel(self.janela, text = "*Todos os campos são obrigatórios", font = ("verdana", 12), text_color = "green")
-        self.texto1.place(x = 50, y = 60)
-        self.texto2 = ctk.CTkLabel(self.janela, text = "Informações do Aluno", font = ("verdana", 14), text_color = "blue")
-        self.texto2.place(x = 50, y = 100)
+        self.cabecalho = ctk.CTkLabel(self.janela, text = "CADASTRO DE ALUNOS", font = ("verdana", 28), text_color = "blue").place(x = 200, y = 10)
+        self.texto1 = ctk.CTkLabel(self.janela, text = "*Todos os campos são obrigatórios", font = ("verdana", 12), text_color = "green").place(x = 50, y = 60)
+        self.texto2 = ctk.CTkLabel(self.janela, text = "Informações do Aluno", font = ("verdana", 14), text_color = "blue").place(x = 50, y = 100)
         self.nome = ctk.CTkEntry(self.janela, placeholder_text = "Nome completo", font = ("verdana", 16), justify = "center", width = 600)
         self.nome.place(x = 50, y = 140)
         self.cep = ctk.CTkEntry(self.janela, placeholder_text = "CEP", font = ("verdana", 16), justify = "center", width = 120)
         self.cep.place(x=50, y=190)
-        self.botao_buscar_cep = ctk.CTkButton(self.janela, text = "Buscar CEP", font = ("verdana", 16), width = 100, command = self.buscar_cep)
-        self.botao_buscar_cep.place(x=190, y=190)
+        self.botao_buscar_cep = ctk.CTkButton(self.janela, text = "Buscar CEP", font = ("verdana", 16), width = 100, command = self.buscar_cep).place(x=190, y=190)
         self.endereco = ctk.CTkEntry(self.janela, placeholder_text = "Endereço", font = ("verdana", 16), justify = "center", width = 335)
         self.endereco.place(x = 315, y = 190)
         self.numero_endereco = ctk.CTkEntry(self.janela, placeholder_text = "Número", font = ("verdana", 16), justify = "center", width = 90)
@@ -219,44 +299,34 @@ class TelaCadastrarAluno():
         self.email.place(x = 50, y = 290)
         self.idade = ctk.CTkEntry(self.janela, placeholder_text = "Idade", font = ("verdana", 16), justify = "center", width = 80)
         self.idade.place(x = 50, y = 340)
-        self.tipo_doc = ctk.CTkLabel(self.janela, text = "Tipo documento:", font = ("verdana", 16), justify = "center", width = 160, text_color = "blue")
-        self.tipo_doc.place(x = 135, y = 340)
+        self.tipo_doc = ctk.CTkLabel(self.janela, text = "Tipo documento:", font = ("verdana", 16), justify = "center", width = 160, text_color = "blue").place(x = 135, y = 340)
         self.comb_doc = ctk.CTkComboBox(self.janela, font = ("verdana", 16), justify = "center", width = 80, dropdown_fg_color = "white", dropdown_text_color = "blue", button_color = "green", values = ["RG", "CPF"])
         self.comb_doc.place(x = 300, y = 340)
-        self.num_doc = ctk.CTkLabel(self.janela, text = "Numº:", font = ("verdana", 16), justify = "center", width = 50, text_color = "blue")
-        self.num_doc.place(x = 395, y = 340)
+        self.num_doc = ctk.CTkLabel(self.janela, text = "Numº:", font = ("verdana", 16), justify = "center", width = 50, text_color = "blue").place(x = 395, y = 340)
         self.numero_doc = ctk.CTkEntry(self.janela, placeholder_text = "Somente números", font = ("verdana", 16), justify = "center", width = 190)
         self.numero_doc.place(x = 460, y = 340)
         self.telefone = ctk.CTkEntry(self.janela, placeholder_text = "Telefone", font = ("verdana", 16), justify = "center", width = 200)
         self.telefone.place(x = 50, y = 390)
-        self.genero = ctk.CTkLabel(self.janela, text = "Genero:", font = ("verdana", 16), justify = "center", width = 110, text_color = "blue")
-        self.genero.place(x = 250, y = 390)
+        self.genero = ctk.CTkLabel(self.janela, text = "Genero:", font = ("verdana", 16), justify = "center", width = 110, text_color = "blue").place(x = 250, y = 390)
         self.comb_gen = ctk.CTkComboBox(self.janela, font = ("verdana", 16), justify = "center", dropdown_fg_color = "white", dropdown_text_color = "blue", button_color = "green", values = ["Masculino", "Feminino", "Sem gênero"])
         self.comb_gen.place(x = 350, y = 390)
-        self.pcd = ctk.CTkLabel(self.janela, text = "PCD:", font = ("verdana", 16), justify = "center", width = 50, text_color = "blue")
-        self.pcd.place(x = 502, y = 390)
+        self.pcd = ctk.CTkLabel(self.janela, text = "PCD:", font = ("verdana", 16), justify = "center", width = 50, text_color = "blue").place(x = 502, y = 390)
         self.comb_pcd = ctk.CTkComboBox(self.janela, font = ("verdana", 16), justify = "center", width = 90, dropdown_fg_color = "white", dropdown_text_color = "blue", button_color = "green", values = ["Sim", "Não"])
         self.comb_pcd.place(x = 560, y = 390)
-        self.texto3 = ctk.CTkLabel(self.janela, text = "Informações do Curso", font = ("verdana", 14), text_color = "blue")
-        self.texto3.place(x = 50, y = 440)
+        self.texto3 = ctk.CTkLabel(self.janela, text = "Informações do Curso", font = ("verdana", 14), text_color = "blue").place(x = 50, y = 440)
         self.curso = ctk.CTkEntry(self.janela, placeholder_text = "Nome do curso", font = ("verdana", 16), justify = "center", width = 600)
         self.curso.place(x = 50, y = 480)
-        self.turma = ctk.CTkLabel(self.janela, text = "Turma:", font = ("verdana", 16), justify = "left", text_color = "blue")
-        self.turma.place(x = 50, y = 530)
+        self.turma = ctk.CTkLabel(self.janela, text = "Turma:", font = ("verdana", 16), justify = "left", text_color = "blue").place(x = 50, y = 530)
         self.comb_turma = ctk.CTkComboBox(self.janela, font = ("verdana", 16), width = 150, dropdown_fg_color = "white", dropdown_text_color = "blue", button_color = "green", values = ["1º Semestre", "2º Semestre"])
         self.comb_turma.place(x = 120, y = 530)
-        self.turno = ctk.CTkLabel(self.janela, text = "Turno:", font = ("verdana", 16), justify = "center", text_color = "blue")
-        self.turno.place(x = 280, y = 530)
+        self.turno = ctk.CTkLabel(self.janela, text = "Turno:", font = ("verdana", 16), justify = "center", text_color = "blue").place(x = 280, y = 530)
         self.comb_turno = ctk.CTkComboBox(self.janela, font = ("verdana", 16), width = 100, dropdown_fg_color = "white", dropdown_text_color = "blue", button_color = "green", values = ["Manhã", "Tarde", "Noite"])
         self.comb_turno.place(x = 345, y = 530)
-        self.transferido = ctk.CTkLabel(self.janela, text = "Transferido:", font = ("verdana", 16), justify = "center", text_color = "blue")
-        self.transferido.place(x = 455, y = 530)
+        self.transferido = ctk.CTkLabel(self.janela, text = "Transferido:", font = ("verdana", 16), justify = "center", text_color = "blue").place(x = 455, y = 530)
         self.comb_transf = ctk.CTkComboBox(self.janela, font = ("verdana", 16), justify = "center", width = 90, dropdown_fg_color = "white", dropdown_text_color = "blue", button_color = "green", values = ["Sim", "Não"])
         self.comb_transf.place(x = 560, y = 530)
-        self.botao_cad_aluno = ctk.CTkButton(self.janela, text = "Cadastrar Aluno", font = ("verdana", 24), height = 50, width = 400, command = self.cadastro)
-        self.botao_cad_aluno.place(x = 150, y = 580)
-        self.botao_voltar = ctk.CTkButton(self.janela, text = "Voltar", font = ("verdana", 16), fg_color = "green", width = 140, command = self.janela.destroy)
-        self.botao_voltar.place(x = 280, y = 650)
+        self.botao_cad_aluno = ctk.CTkButton(self.janela, text = "Cadastrar Aluno", font = ("verdana", 24), height = 50, width = 400, command = self.cadastro).place(x = 150, y = 580)
+        self.botao_voltar = ctk.CTkButton(self.janela, text = "Voltar", font = ("verdana", 16), fg_color = "green", width = 140, command = self.janela.destroy).place(x = 280, y = 650)
 
     def cadastro(self):
         nome = self.nome.get()
@@ -309,17 +379,14 @@ class TelaCadastrarAluno():
             conexao.close()
     
     def buscar_cep(self):
-        cep = self.cep.get()
-        
+        cep = self.cep.get()   
         if not cep:
             messagebox.showwarning("Aviso", "Por favor, insira um CEP.")
             return
-
         try:
             resposta = requests.get(f"https://viacep.com.br/ws/{cep}/json/")
             data = resposta.json()
             if "erro" not in data:
-                # Preenche os campos de endereço com os dados obtidos
                 self.endereco.delete(0, 'end')
                 self.endereco.insert(0, data.get("logradouro", ""))
                 self.bairro.delete(0, 'end')
@@ -329,7 +396,6 @@ class TelaCadastrarAluno():
                 messagebox.showinfo("Informação", "CEP encontrado com sucesso.")
             else:
                 messagebox.showwarning(title = "Cadastro de aluno", message = "CEP não encontrado. Por favor, verifique o CEP e tente novamente.")
-
         except Exception as e:
             print(f"Erro ao buscar CEP: {e}")
             messagebox.showerror(title = "Cadastro de aluno", message = "Ocorreu um erro ao buscar o CEP. Tente novamente.")
@@ -341,32 +407,22 @@ class TelaCadastrarNotas():
         self.janela.geometry("700x740")
         self.janela.resizable(False, False)
         self.janela.transient(janela)
-        self.janela.bind('<Return>', lambda event = None: self.pesquisar())
 
         self.frame_cadastrar_notas = ctk.CTkFrame(self.janela)
         
-        self.cabecalho = ctk.CTkLabel(self.janela, text = "CADASTRO DE MATERIAS E NOTAS", font = ("verdana", 28), text_color = "blue")
-        self.cabecalho.place(x = 100, y = 10)
-        self.tipo_doc = ctk.CTkLabel(self.janela, text = "Tipo documento:", font = ("verdana", 16), justify = "center", width = 160, text_color = "blue")
-        self.tipo_doc.place(x = 30, y = 60)
+        self.cabecalho = ctk.CTkLabel(self.janela, text = "CADASTRO DE MATERIAS E NOTAS", font = ("verdana", 28), text_color = "blue").place(x = 100, y = 10)
+        self.tipo_doc = ctk.CTkLabel(self.janela, text = "Tipo documento:", font = ("verdana", 16), justify = "center", width = 160, text_color = "blue").place(x = 30, y = 60)
         self.comb_doc = ctk.CTkComboBox(self.janela, font = ("verdana", 16), justify = "center", width = 80, dropdown_fg_color = "white", dropdown_text_color = "blue", button_color = "green", values = ["RG", "CPF"])
         self.comb_doc.place(x = 190, y = 60)
-        self.num_cpf = ctk.CTkLabel(self.janela, text = "Núm:", font = ("verdana", 16), text_color = "blue")
-        self.num_cpf.place(x = 285, y = 60)
+        self.num_cpf = ctk.CTkLabel(self.janela, text = "Núm:", font = ("verdana", 16), text_color = "blue").place(x = 285, y = 60)
         self.numero_doc = ctk.CTkEntry(self.janela, placeholder_text = "Somente números", font = ("verdana", 16), justify = "center", width = 190)
         self.numero_doc.place(x = 345, y = 60)
-        self.botao_pesquisar = ctk.CTkButton(self.janela, text = "Pesquisar", font = ("verdana", 16), width = 100, fg_color = "green", command = self.pesquisar)
-        self.botao_pesquisar.place(x = 550, y = 60)
-        self.nome = ctk.CTkLabel(self.janela, text = "", font = ("verdana", 16), justify = "center", width = 600)
-        self.nome.place(x = 50, y = 110)
-        self.curso = ctk.CTkLabel(self.janela, text = "", font = ("verdana", 16), justify = "center", width = 600)
-        self.curso.place(x = 50, y = 160)
-        self.texto1 = ctk.CTkLabel(self.janela, text = "Cadastro de Materias", font = ("verdana", 16), text_color = "green")
-        self.texto1.place(x = 120, y = 210)
-        self.texto2 = ctk.CTkLabel(self.janela, text = "Cadastro de Notas", font = ("verdana", 16), text_color = "green")
-        self.texto2.place(x = 490, y = 210)
-        self.texto3 = ctk.CTkLabel(self.janela, text = "1º Bim 2º Bim 3º Bim 4º Bim", font = ("verdana", 16), text_color = "white")
-        self.texto3.place(x = 440, y = 260)
+        self.botao_pesquisar = ctk.CTkButton(self.janela, text = "Pesquisar", font = ("verdana", 16), width = 100, fg_color = "green", command = self.pesquisar).place(x = 550, y = 60)
+        self.nome = ctk.CTkLabel(self.janela, text = "", font = ("verdana", 16), justify = "center", width = 600).place(x = 50, y = 110)
+        self.curso = ctk.CTkLabel(self.janela, text = "", font = ("verdana", 16), justify = "center", width = 600).place(x = 50, y = 160)
+        self.texto1 = ctk.CTkLabel(self.janela, text = "Cadastro de Materias", font = ("verdana", 16), text_color = "green").place(x = 120, y = 210)
+        self.texto2 = ctk.CTkLabel(self.janela, text = "Cadastro de Notas", font = ("verdana", 16), text_color = "green").place(x = 490, y = 210)
+        self.texto3 = ctk.CTkLabel(self.janela, text = "1º Bim 2º Bim 3º Bim 4º Bim", font = ("verdana", 16), text_color = "white").place(x = 440, y = 260)
         self.materia1 = ctk.CTkEntry(self.janela, placeholder_text = "Materia 1", font = ("verdana", 16), justify = "center", width = 380)
         self.materia1.place(x = 20, y = 310)
         self.materia2 = ctk.CTkEntry(self.janela, placeholder_text = "Materia 2", font = ("verdana", 16), justify = "center", width = 380)
@@ -379,61 +435,26 @@ class TelaCadastrarNotas():
         self.materia5.place(x = 20, y = 510)
         self.materia6 = ctk.CTkEntry(self.janela, placeholder_text = "Materia 6", font = ("verdana", 16), justify = "center", width = 380)
         self.materia6.place(x = 20, y = 560)
-        self.m1n1 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m1n1.place(x = 445, y = 310)
-        self.m1n2 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m1n2.place(x = 506, y = 310)
-        self.m1n3 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m1n3.place(x = 567, y = 310)
-        self.m1n4 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m1n4.place(x = 629, y = 310)
-        self.m2n1 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m2n1.place(x = 445, y = 360)
-        self.m2n2 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m2n2.place(x = 506, y = 360)
-        self.m2n3 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m2n3.place(x = 567, y = 360)
-        self.m2n4 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m2n4.place(x = 629, y = 360)
-        self.m3n1 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m3n1.place(x = 445, y = 410)
-        self.m3n2 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m3n2.place(x = 506, y = 410)
-        self.m3n3 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m3n3.place(x = 567, y = 410)
-        self.m3n4 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m3n4.place(x = 629, y = 410)
-        self.m4n1 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m4n1.place(x = 445, y = 460)
-        self.m4n2 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m4n2.place(x = 506, y = 460)
-        self.m4n3 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m4n3.place(x = 567, y = 460)
-        self.m4n4 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m4n4.place(x = 629, y = 460)
-        self.m5n1 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m5n1.place(x = 445, y = 510)
-        self.m5n2 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m5n2.place(x = 506, y = 510)
-        self.m5n3 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m5n3.place(x = 567, y = 510)
-        self.m5n4 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m5n4.place(x = 629, y = 510)
-        self.m6n1 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m6n1.place(x = 445, y = 560)
-        self.m6n2 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m6n2.place(x = 506, y = 560)
-        self.m6n3 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m6n3.place(x = 567, y = 560)
-        self.m6n4 = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = 50)
-        self.m6n4.place(x = 629, y = 560)
-        self.botao_cadastro = ctk.CTkButton(self.janela, text = "Cadastrar", font = ("verdana", 24), height = 50, width = 400, command = self.cadastro)
-        self.botao_cadastro.place(x = 150, y = 615)
-        self.botao_voltar = ctk.CTkButton(self.janela, text = "Voltar", font = ("verdana", 16), fg_color = "green", width = 140, command = self.janela.destroy)
-        self.botao_voltar.place(x = 280, y = 690)
+        self.botao_cadastro = ctk.CTkButton(self.janela, text = "Cadastrar", font = ("verdana", 24), height = 50, width = 400, command = self.cadastro).place(x = 150, y = 615)
+        self.botao_voltar = ctk.CTkButton(self.janela, text = "Voltar", font = ("verdana", 16), fg_color = "green", width = 140, command = self.janela.destroy).place(x = 280, y = 690)
+        self.janela.bind('<Return>', lambda event = None: self.pesquisar())
         self.nome_aluno = ""
         self.curso_aluno = ""
+        self.criar_ent_notas()
 
+    def criar_ent_notas(self):
+        inicio_x = 445
+        inicio_y = 310
+        num_linhas = 6
+        num_colunas = 4
+        entry_width = 50
+        entry_height = 50
+
+        for i in range(num_linhas):
+            for j in range(num_colunas):
+                entry = ctk.CTkEntry(self.janela, placeholder_text = "", font = ("verdana", 16), justify = "center", width = entry_width)
+                entry.place(x = inicio_x + j * (entry_width + 12), y =  inicio_y + i * entry_height)
+    
     def pesquisar(self):
         if self.comb_doc.get() == "CPF" and not validacao_cpf(self.numero_doc.get()):
             messagebox.showerror(title = "Cadastro de Notas", message = "CPF inválido. Por favor, insira um CPF válido.")
@@ -460,7 +481,6 @@ class TelaCadastrarNotas():
         materia4 = self.materia4.get()
         materia5 = self.materia5.get()
         materia6 = self.materia6.get()
-        
         val_matriz = []
 
         for i in range(1, 7):
@@ -517,32 +537,25 @@ class TelaGerarRelatorio():
 
         self.frame_gerar_relatorio = ctk.CTkFrame(self.janela)
         
-        self.cabecalho = ctk.CTkLabel(self.janela, text = "RELATÓRIO DE MATERIAS E NOTAS", font = ("verdana", 28), text_color = "blue")
-        self.cabecalho.place(x = 100, y = 10)
-        self.tipo_doc = ctk.CTkLabel(self.janela, text = "Tipo documento:", font = ("verdana", 16), justify = "center", width = 160, text_color = "blue")
-        self.tipo_doc.place(x = 30, y = 60)
+        self.cabecalho = ctk.CTkLabel(self.janela, text = "RELATÓRIO DE MATERIAS E NOTAS", font = ("verdana", 28), text_color = "blue").place(x = 100, y = 10)
+        self.tipo_doc = ctk.CTkLabel(self.janela, text = "Tipo documento:", font = ("verdana", 16), justify = "center", width = 160, text_color = "blue").place(x = 30, y = 60)
         self.comb_doc = ctk.CTkComboBox(self.janela, font = ("verdana", 16), justify = "center", width = 80, dropdown_fg_color = "white", dropdown_text_color = "blue", button_color = "green", values = ["RG", "CPF"])
         self.comb_doc.place(x = 190, y = 60)
-        self.num_cpf = ctk.CTkLabel(self.janela, text = "Núm:", font = ("verdana", 16), text_color = "blue")
-        self.num_cpf.place(x = 285, y = 60)
+        self.num_cpf = ctk.CTkLabel(self.janela, text = "Núm:", font = ("verdana", 16), text_color = "blue").place(x = 285, y = 60)
         self.numero_doc = ctk.CTkEntry(self.janela, placeholder_text = "Somente números", font = ("verdana", 16), justify = "center", width = 190)
         self.numero_doc.place(x = 345, y = 60)
-        self.botao_pesquisar = ctk.CTkButton(self.janela, text = "Pesquisar", font = ("verdana", 16), width = 100, fg_color = "green", command = self.pesquisar)
-        self.botao_pesquisar.place(x = 550, y = 60)
-        self.nome = ctk.CTkLabel(self.janela, text = "", font = ("verdana", 16), justify = "center", width = 600)
-        self.nome.place(x = 50, y = 110)
-        self.curso = ctk.CTkLabel(self.janela, text = "", font = ("verdana", 16), justify = "center", width = 600)
-        self.curso.place(x = 50, y = 160)
+        self.botao_pesquisar = ctk.CTkButton(self.janela, text = "Pesquisar", font = ("verdana", 16), width = 100, fg_color = "green", command = self.pesquisar).place(x = 550, y = 60)
+        self.nome = ctk.CTkLabel(self.janela, text = "", font = ("verdana", 16), justify = "center", width = 600).place(x = 50, y = 110)
+        self.curso = ctk.CTkLabel(self.janela, text = "", font = ("verdana", 16), justify = "center", width = 600).place(x = 50, y = 160)
         self.botao_relatorio = ctk.CTkButton(self.janela, text = "Gerar Relatório", font = ("verdana", 16), height = 50, width = 200, fg_color = "red", command = self.gerar_relatorio)
         self.relatorio = ctk.CTkTextbox(self.janela, height = 300, width = 600, font = ("verdana", 16))
-        self.botao_pdf = ctk.CTkButton(self.janela, text = "Exportar para PDF", font = ("verdana", 16), width = 200, fg_color = "blue", command = self.exportar_pdf)
-        self.botao_pdf.place(x=475, y=630)
-        self.botao_excel = ctk.CTkButton(self.janela, text = "Exportar para Excel", font = ("verdana", 16), width = 200, fg_color = "orange", command = self.exportar_excel)
-        self.botao_excel.place(x=225, y=630)
-        self.botao_voltar = ctk.CTkButton(self.janela, text = "Voltar", font = ("verdana", 16), fg_color = "green", width = 140, command = self.janela.destroy)
-        self.botao_voltar.place(x = 30, y = 630)
+        self.botao_pdf = ctk.CTkButton(self.janela, text = "PDF", font = ("verdana", 16), width = 100, fg_color = "blue", command = self.exportar_pdf).place(x = 240, y = 630)
+        self.botao_excel = ctk.CTkButton(self.janela, text = "Excel", font = ("verdana", 16), width = 100, fg_color = "orange", command = self.exportar_excel).place(x = 400, y = 630)
+        self.botao_email = ctk.CTkButton(self.janela, text = "Email", font = ("verdana", 16), width = 100, fg_color = "red", command = self.exportar_email).place(x = 555, y = 630)
+        self.botao_voltar = ctk.CTkButton(self.janela, text = "Voltar", font = ("verdana", 16), fg_color = "green", width = 140, command = self.janela.destroy).place(x = 45, y = 630)
         self.nome_aluno = ""
         self.curso_aluno = ""
+        self.email_aluno = ""
 
     def pesquisar(self):
         if self.comb_doc.get() == "CPF" and not validacao_cpf(self.numero_doc.get()):
@@ -551,7 +564,7 @@ class TelaGerarRelatorio():
         
         conexao = mc.connect(host = "localhost", user = "root", password = "3007", database = "cad_alunos")
         cursor = conexao.cursor()
-        consulta_aluno = f"SELECT nome, curso FROM aluno WHERE numerodoc = '{self.numero_doc.get()}'"
+        consulta_aluno = f"SELECT nome, curso, email  FROM aluno WHERE numerodoc = '{self.numero_doc.get()}'"
         cursor.execute(consulta_aluno)
         aluno_existente = cursor.fetchone()
 
@@ -560,6 +573,7 @@ class TelaGerarRelatorio():
         else:
             self.nome_aluno = aluno_existente[0]
             self.curso_aluno = aluno_existente[1]
+            self.email_aluno = aluno_existente[2]
             self.nome.configure(text = f"{self.nome_aluno}", justify = "center", width = 600)
             self.curso.configure(text = f"{self.curso_aluno}", justify = "center", width = 600)
             self.botao_relatorio.place(x = 250, y = 210)
@@ -595,25 +609,50 @@ class TelaGerarRelatorio():
         cursor.close()
         conexao.close()
 
+    def gerar_pdf(self, relatorio_texto):
+        nome_arquivo = "relatorio_notas.pdf"
+        pdf = SimpleDocTemplate(nome_arquivo, pagesize = letter)
+        styles = getSampleStyleSheet()
+        style_title = styles["Title"]
+        style_body = styles["BodyText"]
+        elements = []
+        title = Paragraph("Relatório de Notas", style_title)
+        elements.append(title)
+        body = Paragraph(relatorio_texto, style_body)
+        elements.append(body)
+        pdf.build(elements)
+        return nome_arquivo
+    
     def exportar_pdf(self):
         relatorio_texto = self.relatorio.get("1.0", ctk.END)
 
         if not relatorio_texto.isspace():
-            nome_arquivo = "relatorio_notas.pdf"
-            pdf = SimpleDocTemplate(nome_arquivo, pagesize=letter)
-            styles = getSampleStyleSheet()
-            style_title = styles["Title"]
-            style_body = styles["BodyText"]
-            elements = []
-            title = Paragraph("Relatório de Notas", style_title)
-            elements.append(title)
-            body = Paragraph(relatorio_texto, style_body)
-            elements.append(body)
-            pdf.build(elements)
+            nome_arquivo = self.gerar_pdf(relatorio_texto)
             messagebox.showinfo(title = "Exportação para PDF", message = f"Relatório exportado para {nome_arquivo}.")
         else:
             messagebox.showwarning(title = "Exportação para PDF", message = "Nenhum relatório para exportar.")
 
+    def exportar_email(self):
+        relatorio_texto = self.relatorio.get("1.0", ctk.END)
+
+        if not relatorio_texto.isspace():
+            nome_arquivo = self.gerar_pdf(relatorio_texto)
+            outlook = win32.Dispatch("outlook.application")
+            email = outlook.CreateItem(0)
+            email.To = self.email_aluno
+            email.Subject = "Relatório de Notas"
+            email.HTMLBody = "<p>Olá, aqui está o relatório de notas.</p><p>Abraços!</p><p>Escola</p>"
+            anexo = r"C:\Users\rober\OneDrive\Área de Trabalho\projeto_escola\relatorio_notas.pdf"
+            email.Attachments.Add(anexo)
+
+            try:
+                email.Send()
+                messagebox.showinfo(title = "Exportação para email", message = "Email enviado com sucesso!")
+            except Exception as e:
+                messagebox.showerror(title = "Exportação para email", message = f"Ocorreu um erro ao enviar o email: {e}")
+        else:
+            messagebox.showwarning(title = "Exportação para email", message = "Nenhum relatório para exportar.")
+    
     def exportar_excel(self):
         relatorio_texto = self.relatorio.get("1.0", ctk.END)
 
@@ -633,23 +672,18 @@ class TelaExcluirAluno():
         self.janela.geometry("300x350")
         self.janela.resizable(False, False)
         self.janela.transient(janela)
-        self.janela.bind('<Return>', lambda event = None: self.pesquisar())
 
         self.frame_excluir_aluno = ctk.CTkFrame(self.janela)
 
-        self.cabecalho = ctk.CTkLabel(self.janela, text = "EXCLUIR ALUNO", font = ("verdana", 20), text_color = "blue")
-        self.cabecalho.place(x = 70, y = 10)
-        self.num_cpf = ctk.CTkLabel(self.janela, text = "Digite o CPF do aluno", font = ("verdana", 16))
-        self.num_cpf.place(x = 65, y = 60)
+        self.cabecalho = ctk.CTkLabel(self.janela, text = "EXCLUIR ALUNO", font = ("verdana", 20), text_color = "blue").place(x = 70, y = 10)
+        self.num_cpf = ctk.CTkLabel(self.janela, text = "Digite o CPF do aluno", font = ("verdana", 16)).place(x = 65, y = 60)
         self.numero = ctk.CTkEntry(self.janela, placeholder_text = "Somente números", font = ("verdana", 16), justify = "center", width = 200)
         self.numero.place(x = 50, y = 100)
-        self.botao_pesquisar = ctk.CTkButton(self.janela, text = "Pesquisar Aluno", font = ("verdana", 16), width = 120, fg_color = "green", command = self.pesquisar)
-        self.botao_pesquisar.place(x = 80, y = 150)
-        self.nome = ctk.CTkLabel(self.janela, text = "", font = ("verdana", 16), justify = "center", width = 250)
-        self.nome.place(x = 5, y = 200)
+        self.botao_pesquisar = ctk.CTkButton(self.janela, text = "Pesquisar Aluno", font = ("verdana", 16), width = 120, fg_color = "green", command = self.pesquisar).place(x = 80, y = 150)
+        self.nome = ctk.CTkLabel(self.janela, text = "", font = ("verdana", 16), justify = "center", width = 250).place(x = 5, y = 200)
         self.botao_confirmar = ctk.CTkButton(self.janela, text = "Confirmar Exclusão", font = ("verdana", 16), height = 50, width = 200, fg_color = "red", command = lambda: self.exclusao(self.numero.get()))
-        self.botao_voltar = ctk.CTkButton(self.janela, text = "Voltar", font = ("verdana", 16), width = 150, command = self.janela.destroy)
-        self.botao_voltar.place(x = 80, y = 310)
+        self.botao_voltar = ctk.CTkButton(self.janela, text = "Voltar", font = ("verdana", 16), width = 150, command = self.janela.destroy).place(x = 80, y = 310)
+        self.janela.bind('<Return>', lambda event = None: self.pesquisar())
 
     def pesquisar(self):
         if not validacao_cpf(self.numero.get()):
@@ -667,11 +701,13 @@ class TelaExcluirAluno():
         else:
             nome = aluno_existente[0]
             self.nome.configure(text = f"{nome}", justify = "center", width = 250)
-            self.botao_confirmar.configure(command = lambda: self.exclusao(self.numero.get()))
+            self.botao_confirmar.configure(command = lambda: self.exclusao(self.numero.get(), aluno_existente[0]))
             self.botao_confirmar.place(x = 55, y = 240)
 
-    def exclusao(self, munero_aluno):
+    def exclusao(self, munero_aluno, nome):
         numero_aluno = self.numero.get()
+        nome_aluno = nome
+        
         conexao = mc.connect(host = "localhost", user = "root", password = "3007", database = "cad_alunos")
         cursor = conexao.cursor()
         exclui_aluno = f"DELETE FROM aluno WHERE numerodoc = '{numero_aluno}'"
@@ -683,6 +719,22 @@ class TelaExcluirAluno():
         self.numero.delete(0, 'end')
         cursor.close()
         conexao.close()
+
+        conexao_materias = mc.connect(host = "localhost", user = "root", password = "3007", database = "cad_materias")
+        cursor_materias = conexao_materias.cursor()
+        exclui_materias = f"DELETE FROM materias WHERE nome = '{nome_aluno}'"
+        cursor_materias.execute(exclui_materias)
+        conexao_materias.commit()
+        cursor_materias.close()
+        conexao_materias.close()
+
+        conexao_notas = mc.connect(host = "localhost", user = "root", password = "3007", database = "cad_notas")
+        cursor_notas = conexao_notas.cursor()
+        exclui_notas = f"DELETE FROM notas WHERE nome = '{nome_aluno}'"
+        cursor_notas.execute(exclui_notas)
+        conexao_notas.commit()
+        cursor_notas.close()
+        conexao_notas.close()
 
 def main():
     ctk.set_appearance_mode("dark")
